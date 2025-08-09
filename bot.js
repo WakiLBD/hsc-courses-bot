@@ -8,40 +8,47 @@ const BKASH_USERNAME = process.env.BKASH_USERNAME;
 const BKASH_PASSWORD = process.env.BKASH_PASSWORD;
 const BKASH_APP_KEY = process.env.BKASH_APP_KEY;
 const BKASH_APP_SECRET = process.env.BKASH_APP_SECRET;
-const ADMIN_ID = process.env.ADMIN_ID; // Primary Admin's Telegram user ID
+const ADMIN_ID = process.env.ADMIN_ID;
+let BKASH_NUMBER = process.env.BKASH_NUMBER || '01902912653';
 
 // Admin management
-const adminUsers = new Set([process.env.ADMIN_ID]); // Primary admin always included
+const adminUsers = new Set([ADMIN_ID]);
 const PORT = process.env.PORT || 3000;
 
-// bKash API URLs (Live)
+// bKash API URLs
 const BKASH_BASE_URL = 'https://tokenized.pay.bka.sh/v1.2.0-beta';
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const app = express();
 
-// In-memory storage (use database in production)
+// Storage
 const users = new Map();
 const pendingPayments = new Map();
 const courses = new Map([
-    ['hsc2027_ict', { name: '📱 ICT Course', price: 500, groupLink: 'https://t.me/T_Patshala' }],
+    ['hsc2027_ict', { name: '📱 ICT Course', price: 500, groupLink: 'https://t.me/+HSC2027ICT' }],
     ['hsc2027_bangla', { name: '📚 Bangla Course', price: 500, groupLink: 'https://t.me/+HSC2027Bangla' }],
     ['hsc2027_math', { name: '🔢 Math Course', price: 500, groupLink: 'https://t.me/+HSC2027Math' }],
     ['hsc2027_chemistry', { name: '⚗️ Chemistry Course', price: 500, groupLink: 'https://t.me/+HSC2027Chemistry' }],
-    ['hsc2027_biology', { name: '🧬 Biology Course', price: 500, groupLink: 'https://t.me/+HSC2027Biology' }]
+    ['hsc2027_biology', { name: '🧬 Biology Course', price: 500, groupLink: 'https://t.me/+HSC2027Biology' }],
+    ['hsc2027_acs_math_cycle1', { name: '🧮 HSC 2027 ACS MATH CYCLE 1', price: 100, groupLink: 'https://t.me/+HSC2027ACSMATH1' }]
 ]);
 
-// Check if user is admin
+// Payment links
+const paymentLinks = new Map([
+    ['hsc2027_ict', 'https://example-bkash-link.com/ict'],
+    ['hsc2027_bangla', 'https://example-bkash-link.com/bangla'],
+    ['hsc2027_acs_math_cycle1', 'https://shop.bkash.com/mamun-gazipur-printer019029126/pay/bdt100/ceGy7t']
+]);
+
+// Helper functions
 function isAdmin(userId) {
     return adminUsers.has(userId.toString());
 }
 
-// Check if user is primary admin
 function isPrimaryAdmin(userId) {
     return userId.toString() === ADMIN_ID;
 }
 
-// User data structure
 function getUserData(userId) {
     if (!users.has(userId)) {
         users.set(userId, {
@@ -74,8 +81,7 @@ async function getBkashToken() {
         });
         
         bkashToken = response.data.id_token;
-        tokenExpiry = Date.now() + (response.data.expires_in * 1000) - 60000; // 1 min buffer
-        
+        tokenExpiry = Date.now() + (response.data.expires_in * 1000) - 60000;
         return bkashToken;
     } catch (error) {
         console.error('bKash token error:', error.message);
@@ -83,11 +89,9 @@ async function getBkashToken() {
     }
 }
 
-// Verify bKash Payment
 async function verifyPayment(trxId) {
     try {
         const token = await getBkashToken();
-        
         const response = await axios.post(`${BKASH_BASE_URL}/tokenized/checkout/general/searchTransaction`, {
             trxID: trxId
         }, {
@@ -97,7 +101,6 @@ async function verifyPayment(trxId) {
                 'X-APP-Key': BKASH_APP_KEY
             }
         });
-        
         return response.data;
     } catch (error) {
         console.error('Payment verification error:', error.message);
@@ -201,6 +204,7 @@ bot.onText(/\/admin/, (msg) => {
 
 💰 **Payment Management:**
 /updatepayment - Update payment number
+/updatepaymentlink - Update payment link
 
 📊 **Analytics:**
 /stats - View statistics
@@ -216,17 +220,53 @@ bot.onText(/\/admin/, (msg) => {
 🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
 \`/editlink hsc2027_ict https://t.me/+newlink\`
-\`/editname hsc2027_ict 📱 ICT Advanced Course\`` : `
+\`/editname hsc2027_ict 📱 ICT Advanced Course\`
+\`/updatepayment 01902912653\`
+\`/updatepaymentlink hsc2027_ict https://your-bkash-link.com/ict\`` : `
 
 🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
-\`/editlink hsc2027_ict https://t.me/+newlink\`
-\`/editname hsc2027_ict 📱 ICT Advanced Course\``);
+\`/editlink hsc2027_ict https://t.me/+newlink\``);
 
     bot.sendMessage(msg.chat.id, adminText, {parse_mode: 'Markdown'});
 });
 
-// Add Admin (Only Primary Admin)
+// Update Payment Number
+bot.onText(/\/updatepayment (.+)/, (msg, match) => {
+    if (!isAdmin(msg.from.id)) return;
+    
+    const newPaymentNumber = match[1].trim();
+    
+    if (!/^01[3-9]\d{8}$/.test(newPaymentNumber)) {
+        return bot.sendMessage(msg.chat.id, '❌ Invalid Bangladeshi phone number format! Example: 01712345678');
+    }
+    
+    BKASH_NUMBER = newPaymentNumber;
+    bot.sendMessage(msg.chat.id, `✅ bKash payment number updated to: ${BKASH_NUMBER}`);
+});
+
+// Update Payment Link
+bot.onText(/\/updatepaymentlink (.+) (.+)/, (msg, match) => {
+    if (!isAdmin(msg.from.id)) return;
+    
+    const courseId = match[1].trim();
+    const newLink = match[2].trim();
+    
+    if (!courses.has(courseId)) {
+        return bot.sendMessage(msg.chat.id, '❌ Course not found!');
+    }
+    
+    if (!newLink.startsWith('https://')) {
+        return bot.sendMessage(msg.chat.id, '❌ Invalid payment link! Must start with https://');
+    }
+    
+    paymentLinks.set(courseId, newLink);
+    const course = courses.get(courseId);
+    
+    bot.sendMessage(msg.chat.id, `✅ Payment link updated for "${course.name}"\n🔗 New Link: ${newLink}`);
+});
+
+// Add Admin
 bot.onText(/\/addadmin (.+)/, (msg, match) => {
     if (!isPrimaryAdmin(msg.from.id)) {
         return bot.sendMessage(msg.chat.id, '❌ Only Primary Admin can add new admins!');
@@ -246,7 +286,7 @@ bot.onText(/\/addadmin (.+)/, (msg, match) => {
     bot.sendMessage(msg.chat.id, `✅ New admin added successfully!\n👨‍💼 Admin ID: ${newAdminId}\n📊 Total Admins: ${adminUsers.size}`);
 });
 
-// Remove Admin (Only Primary Admin)
+// Remove Admin
 bot.onText(/\/removeadmin (.+)/, (msg, match) => {
     if (!isPrimaryAdmin(msg.from.id)) {
         return bot.sendMessage(msg.chat.id, '❌ Only Primary Admin can remove admins!');
@@ -266,7 +306,7 @@ bot.onText(/\/removeadmin (.+)/, (msg, match) => {
     bot.sendMessage(msg.chat.id, `✅ Admin removed successfully!\n👨‍💼 Removed Admin ID: ${adminIdToRemove}\n📊 Total Admins: ${adminUsers.size}`);
 });
 
-// List All Admins (Only Primary Admin)
+// List Admins
 bot.onText(/\/listadmins/, (msg) => {
     if (!isPrimaryAdmin(msg.from.id)) {
         return bot.sendMessage(msg.chat.id, '❌ Only Primary Admin can view admin list!');
@@ -291,6 +331,7 @@ bot.onText(/\/listadmins/, (msg) => {
     bot.sendMessage(msg.chat.id, adminList, {parse_mode: 'Markdown'});
 });
 
+// Add Course
 bot.onText(/\/addcourse (.+)/, (msg, match) => {
     if (!isAdmin(msg.from.id)) return;
     
@@ -390,7 +431,7 @@ bot.onText(/\/deletecourse (.+)/, (msg, match) => {
     bot.sendMessage(msg.chat.id, `✅ Course "${course.name}" deleted successfully!`);
 });
 
-// List All Courses
+// List Courses
 bot.onText(/\/listcourses/, (msg) => {
     if (!isAdmin(msg.from.id)) return;
     
@@ -409,20 +450,7 @@ bot.onText(/\/listcourses/, (msg) => {
     bot.sendMessage(msg.chat.id, courseList, {parse_mode: 'Markdown'});
 });
 
-// Update Payment Number
-bot.onText(/\/updatepayment (.+)/, (msg, match) => {
-    if (!isAdmin(msg.from.id)) return;
-    
-    const newPaymentNumber = match[1].trim();
-    
-    if (!/^01[3-9]\d{8}$/.test(newPaymentNumber)) {
-        return bot.sendMessage(msg.chat.id, '❌ Invalid Bangladeshi phone number format! Example: 01712345678');
-    }
-    
-    // Store payment number (you can add this to a config or database)
-    bot.sendMessage(msg.chat.id, `✅ Payment number updated to: ${newPaymentNumber}\n\n⚠️ Note: You need to update this in the bot code manually for now.`);
-});
-
+// Revenue Stats
 bot.onText(/\/revenue/, (msg) => {
     if (!isAdmin(msg.from.id)) return;
     
@@ -459,6 +487,7 @@ bot.onText(/\/revenue/, (msg) => {
     bot.sendMessage(msg.chat.id, revenueText, {parse_mode: 'Markdown'});
 });
 
+// User Stats
 bot.onText(/\/users/, (msg) => {
     if (!isAdmin(msg.from.id)) return;
     
@@ -484,6 +513,7 @@ bot.onText(/\/users/, (msg) => {
     bot.sendMessage(msg.chat.id, usersText, {parse_mode: 'Markdown'});
 });
 
+// General Stats
 bot.onText(/\/stats/, (msg) => {
     if (!isAdmin(msg.from.id)) return;
     
@@ -517,7 +547,6 @@ bot.on('callback_query', async (callbackQuery) => {
     const userId = callbackQuery.from.id;
     const userData = getUserData(userId);
     
-    // Answer callback query to remove loading
     bot.answerCallbackQuery(callbackQuery.id);
     
     if (data === 'main_menu') {
@@ -531,7 +560,6 @@ bot.on('callback_query', async (callbackQuery) => {
             ...mainMenuKeyboard
         });
     }
-    
     else if (data === 'hsc2027') {
         const courseListText = `🔥 HSC 2027 All Courses 🔥
 
@@ -543,7 +571,6 @@ bot.on('callback_query', async (callbackQuery) => {
             ...getHSC2027Keyboard(userId)
         });
     }
-    
     else if (courses.has(data)) {
         const course = courses.get(data);
         const isPurchased = userData.purchases.has(data);
@@ -581,7 +608,6 @@ bot.on('callback_query', async (callbackQuery) => {
             ...getCourseKeyboard(data, userId, isPending)
         });
     }
-    
     else if (data.startsWith('buy_')) {
         const courseId = data.replace('buy_', '');
         const course = courses.get(courseId);
@@ -591,15 +617,11 @@ bot.on('callback_query', async (callbackQuery) => {
         const paymentText = `💳 Payment for ${course.name}
 
 💰 Amount: ${course.price} TK
-📱 bKash Number: 01902912653
+📱 bKash Number: ${BKASH_NUMBER}
 
-💡 Payment Instructions:
-1. Send Money করুন above number এ
-2. Amount: ${course.price} TK  
-3. Transaction complete করার পর
-4. "Submit Transaction ID" button click করুন
-
-⚠️ শুধুমাত্র bKash payment accept করা হয়`;
+💡 Payment Options:
+1. Send Money to above bKash number
+2. OR Click "Pay Now" button for instant payment`;
 
         bot.editMessageText(paymentText, {
             chat_id: msg.chat.id,
@@ -607,14 +629,28 @@ bot.on('callback_query', async (callbackQuery) => {
             ...getCourseKeyboard(courseId, userId, true)
         });
     }
-    
     else if (data.startsWith('pay_')) {
         const courseId = data.replace('pay_', '');
         const course = courses.get(courseId);
         
-        bot.sendMessage(msg.chat.id, `💳 bKash Payment Link for ${course.name}\n\n💰 Amount: ${course.price} TK\n\n[Click here to pay with bKash]`);
+        if (!paymentLinks.has(courseId)) {
+            return bot.sendMessage(msg.chat.id, '⚠️ Payment link not configured for this course. Please send money manually to the bKash number.');
+        }
+        
+        const paymentLink = paymentLinks.get(courseId);
+        
+        const paymentText = `💳 Instant Payment for ${course.name}\n\n💰 Amount: ${course.price} TK`;
+        
+        bot.sendMessage(msg.chat.id, paymentText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💳 Pay Now with bKash', url: paymentLink }],
+                    [{ text: '📝 Submit Transaction ID', callback_data: `submit_trx_${courseId}` }],
+                    [{ text: '⬅️ Back', callback_data: courseId }]
+                ]
+            }
+        });
     }
-    
     else if (data.startsWith('submit_trx_')) {
         const courseId = data.replace('submit_trx_', '');
         const course = courses.get(courseId);
@@ -629,14 +665,13 @@ bot.on('callback_query', async (callbackQuery) => {
             }
         });
         
-        // Set user state for transaction input
         userData.waitingForTrx = courseId;
     }
 });
 
 // Handle Transaction ID Input
 bot.on('message', async (msg) => {
-    if (msg.text && msg.text.startsWith('/')) return; // Skip commands
+    if (msg.text && msg.text.startsWith('/')) return;
     
     const userId = msg.from.id;
     const userData = getUserData(userId);
@@ -646,7 +681,6 @@ bot.on('message', async (msg) => {
         const course = courses.get(courseId);
         const trxId = msg.text.trim();
         
-        // Reset waiting state
         userData.waitingForTrx = null;
         
         bot.sendMessage(msg.chat.id, '⏳ Verifying payment... Please wait...');
@@ -657,7 +691,6 @@ bot.on('message', async (msg) => {
             if (paymentData && paymentData.transactionStatus === 'Completed' && 
                 parseInt(paymentData.amount) >= course.price) {
                 
-                // Payment successful
                 userData.purchases.add(courseId);
                 userData.pendingCourse = null;
                 
@@ -672,11 +705,9 @@ bot.on('message', async (msg) => {
                     }
                 });
                 
-                // Remove from pending payments
                 pendingPayments.delete(`${userId}_${courseId}`);
                 
             } else {
-                // Payment failed or insufficient amount
                 bot.sendMessage(msg.chat.id, `❌ Payment Verification Failed!\n\n🔍 Possible reasons:\n• Transaction ID not found\n• Payment amount insufficient\n• Payment not completed\n\n💡 Please check your Transaction ID and try again.\n\nTransaction ID entered: ${trxId}`, {
                     reply_markup: {
                         inline_keyboard: [
@@ -701,7 +732,7 @@ bot.on('message', async (msg) => {
     }
 });
 
-// Express server for health check (required for fly.io)
+// Express server
 app.get('/', (req, res) => {
     res.send('HSC Courses Bot is running!');
 });
@@ -711,4 +742,3 @@ app.listen(PORT, () => {
 });
 
 console.log('HSC Courses Bot started successfully!');
-
