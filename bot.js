@@ -205,9 +205,10 @@ bot.onText(/\/admin/, (msg) => {
 📊 **Analytics:**
 /stats - View statistics
 /users - View user count
-/revenue - View revenue details
+/revenue - View revenue details` + 
+(isPrimary ? `
 
-${isPrimary ? `👨‍💼 **Admin Management:**
+👨‍💼 **Admin Management:**
 /addadmin - Add new admin
 /removeadmin - Remove admin
 /listadmins - List all admins
@@ -215,10 +216,12 @@ ${isPrimary ? `👨‍💼 **Admin Management:**
 🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
 \`/editlink hsc2027_ict https://t.me/+newlink\`
-\`/editname hsc2027_ict 📱 ICT Advanced Course\`` : '🔧 **Examples:**
+\`/editname hsc2027_ict 📱 ICT Advanced Course\`` : `
+
+🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
 \`/editlink hsc2027_ict https://t.me/+newlink\`
-\`/editname hsc2027_ict 📱 ICT Advanced Course\`'}`;
+\`/editname hsc2027_ict 📱 ICT Advanced Course\``);
 
     bot.sendMessage(msg.chat.id, adminText, {parse_mode: 'Markdown'});
 });
@@ -708,3 +711,4 @@ app.listen(PORT, () => {
 });
 
 console.log('HSC Courses Bot started successfully!');
+
