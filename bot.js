@@ -24,7 +24,7 @@ const app = express();
 const users = new Map();
 const pendingPayments = new Map();
 const courses = new Map([
-    ['hsc2027_ict', { name: '📱 ICT Course', price: 500, groupLink: 'https://t.me/+HSC2027ICT' }],
+    ['hsc2027_ict', { name: '📱 ICT Course', price: 500, groupLink: 'https://t.me/T_Patshala' }],
     ['hsc2027_bangla', { name: '📚 Bangla Course', price: 500, groupLink: 'https://t.me/+HSC2027Bangla' }],
     ['hsc2027_math', { name: '🔢 Math Course', price: 500, groupLink: 'https://t.me/+HSC2027Math' }],
     ['hsc2027_chemistry', { name: '⚗️ Chemistry Course', price: 500, groupLink: 'https://t.me/+HSC2027Chemistry' }],
@@ -40,6 +40,7 @@ function isAdmin(userId) {
 function isPrimaryAdmin(userId) {
     return userId.toString() === ADMIN_ID;
 }
+
 // User data structure
 function getUserData(userId) {
     if (!users.has(userId)) {
@@ -211,10 +212,13 @@ ${isPrimary ? `👨‍💼 **Admin Management:**
 /removeadmin - Remove admin
 /listadmins - List all admins
 
-` : ''🔧 **Examples:**
+🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
 \`/editlink hsc2027_ict https://t.me/+newlink\`
-\`/editname hsc2027_ict 📱 ICT Advanced Course\``;
+\`/editname hsc2027_ict 📱 ICT Advanced Course\`` : '🔧 **Examples:**
+\`/editprice hsc2027_ict 450\`
+\`/editlink hsc2027_ict https://t.me/+newlink\`
+\`/editname hsc2027_ict 📱 ICT Advanced Course\`'}`;
 
     bot.sendMessage(msg.chat.id, adminText, {parse_mode: 'Markdown'});
 });
