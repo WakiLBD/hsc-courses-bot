@@ -1064,6 +1064,8 @@ app.get('/', (req, res) => {
     res.send('HSC Courses Bot is running!');
 });
 
+// Health Check
+app.get('/health', (req, res) => res.sendStatus(200))
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
