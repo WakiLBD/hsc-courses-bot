@@ -1,70 +1,30 @@
-# ===== BASIC APP CONFIGURATION =====
 app = "hsc-courses-bot"
-primary_region = "sin"  # Singapore region for low latency in Bangladesh
+primary_region = "sin"  # Singapore for Bangladesh users
 
-# ===== BUILD CONFIGURATION =====
 [build]
-  builder = "heroku/buildpacks:20"  # Uses Cloud Native Buildpacks
-  buildpacks = [
-    "heroku/nodejs"     # For Node.js support,
-    "heroku-community/apt"  # For system dependencies
-  ]
+  builder = "heroku/buildpacks:20"
+  buildpacks = ["heroku/nodejs"]  # Only Node.js needed
 
-# ===== ENVIRONMENT VARIABLES =====
 [env]
   NODE_ENV = "production"
-  PORT = "3000"
-  # Note: Add sensitive variables via `fly secrets set` command
+  PORT = "3000"  # Must match your Express port
 
-# ===== SERVICE CONFIGURATION =====
 [[services]]
-  internal_port = 3000  # Matches your Express server port
+  internal_port = 3000
   processes = ["app"]
   protocol = "tcp"
 
-  # HTTP/HTTPS Ports
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-    force_https = true  # Auto-redirect HTTP to HTTPS
-
+  # HTTPS is mandatory for Telegram webhooks
   [[services.ports]]
     handlers = ["tls", "http"]
     port = 443
+    force_https = true  # Auto-redirect HTTP to HTTPS
 
-  # Connection Limits
-  [services.concurrency]
-    hard_limit = 50      # Max concurrent connections
-    soft_limit = 40      # Recommended limit
-    type = "connections" # Better for Telegram webhooks
-
-  # Health Checks
+  # Health checks
   [[services.http_checks]]
+    path = "/health"
     interval = "10s"
-    grace_period = "5s"
-    method = "get"
-    path = "/health"     # Add a health endpoint in your Express app
-    protocol = "https"   # Force HTTPS checks
     timeout = "2s"
-    tls_skip_verify = false
 
-  [[services.tcp_checks]]
-    interval = "15s"
-    timeout = "2s"
-    grace_period = "1s"
-
-# ===== DEPLOYMENT CONFIGURATION =====
 [deploy]
-  release_command = "npm run migrate"  # Add DB migrations if needed
-  strategy = "rolling"                 # Zero-downtime deployments
-
-# ===== RESOURCE ALLOCATION =====
-[compute]
-  memory = "512mb"      # Adequate for a Telegram bot
-  cpus = 1              # Single core is sufficient
-  vm_size = "shared-cpu-1x"
-
-# ===== PERSISTENT STORAGE (IF NEEDED) =====
-# [[mounts]]
-#   source = "hsc_data"
-#   destination = "/data"
+  strategy = "rolling"  # Avoid downtime during updates
