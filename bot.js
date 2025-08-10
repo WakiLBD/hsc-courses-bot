@@ -10,7 +10,9 @@ const BKASH_APP_KEY = process.env.BKASH_APP_KEY;
 const BKASH_APP_SECRET = process.env.BKASH_APP_SECRET;
 const ADMIN_ID = process.env.ADMIN_ID;
 const BKASH_NUMBER = process.env.BKASH_NUMBER || '01902912653';
+const NAGAD_NUMBER = '01902912653';
 const CHANNEL_ID = -1002855286349; // Your Telegram channel ID
+const ADMIN_TELEGRAM_LINK = 'https://t.me/Mehedi_X71';
 
 // Admin management
 const adminUsers = new Set([ADMIN_ID]);
@@ -26,6 +28,7 @@ const app = express();
 const users = new Map();
 const pendingPayments = new Map();
 const usedTransactions = new Set(); // Track used transaction IDs
+const courseImages = new Map(); // Store course images
 const courses = new Map([
     ['hsc2027_ict', { name: '📱 ICT Course', price: 500, groupLink: 'https://t.me/+HSC2027ICT' }],
     ['hsc2027_bangla', { name: '📚 Bangla Course', price: 500, groupLink: 'https://t.me/+HSC2027Bangla' }],
@@ -66,13 +69,14 @@ function isTransactionUsed(trxId) {
     return usedTransactions.has(trxId);
 }
 
-async function logTransaction(trxId, userId, amount, courseName) {
+async function logTransaction(trxId, userId, amount, courseName, paymentMethod) {
     usedTransactions.add(trxId);
     
     const message = `💰 **New Payment**\n\n` +
                    `👤 User: \`${userId}\`\n` +
                    `📚 Course: ${courseName}\n` +
                    `💵 Amount: ${amount} TK\n` +
+                   `💳 Method: ${paymentMethod || 'bKash'}\n` +
                    `🆔 TRX ID: \`${trxId}\`\n` +
                    `⏰ Time: ${new Date().toLocaleString()}`;
 
@@ -176,7 +180,7 @@ function getCourseKeyboard(courseId, userId, isPending = false) {
     } else if (isPending) {
         keyboard.push([
             { text: '💳 Pay Now', callback_data: `pay_${courseId}` },
-            { text: '📝 Submit Transaction ID', callback_data: `submit_trx_${courseId}` }
+            { text: '📝 Submit Payment', callback_data: `submit_payment_${courseId}` }
         ]);
     } else {
         keyboard.push([{ text: '💳 Buy Now', callback_data: `buy_${courseId}` }]);
@@ -188,6 +192,55 @@ function getCourseKeyboard(courseId, userId, isPending = false) {
     ]);
     
     return { reply_markup: { inline_keyboard: keyboard } };
+}
+
+function getPaymentMethodKeyboard(courseId) {
+    return {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'bKash Payment', callback_data: `bkash_pay_${courseId}` },
+                    { text: 'Nagad Payment', callback_data: `nagad_pay_${courseId}` }
+                ],
+                [
+                    { text: '⬅️ Back', callback_data: courseId },
+                    { text: '🏠 Main Menu', callback_data: 'main_menu' }
+                ]
+            ]
+        }
+    };
+}
+
+function getBkashPaymentKeyboard(courseId) {
+    const course = courses.get(courseId);
+    return {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '💳 Pay Now with bKash', url: paymentLinks.get(courseId) || '#' }],
+                [{ text: '📝 Submit Transaction ID', callback_data: `submit_bkash_${courseId}` }],
+                [
+                    { text: '⬅️ Back', callback_data: `buy_${courseId}` },
+                    { text: '🏠 Main Menu', callback_data: 'main_menu' }
+                ]
+            ]
+        }
+    };
+}
+
+function getNagadPaymentKeyboard(courseId) {
+    const course = courses.get(courseId);
+    return {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📱 Nagad Number', callback_data: 'nagad_number' }],
+                [{ text: '📝 Submit Payment Proof', callback_data: `submit_nagad_${courseId}` }],
+                [
+                    { text: '⬅️ Back', callback_data: `buy_${courseId}` },
+                    { text: '🏠 Main Menu', callback_data: 'main_menu' }
+                ]
+            ]
+        }
+    };
 }
 
 // Bot Commands
@@ -221,6 +274,7 @@ bot.onText(/\/admin/, (msg) => {
 /editname - Edit course name
 /deletecourse - Delete course
 /listcourses - Show all courses
+/setcourseimage - Set course image
 
 💰 **Payment Management:**
 /updatepayment - Update payment number
@@ -242,13 +296,35 @@ bot.onText(/\/admin/, (msg) => {
 \`/editlink hsc2027_ict https://t.me/+newlink\`
 \`/editname hsc2027_ict 📱 ICT Advanced Course\`
 \`/updatepayment 01902912653\`
-\`/updatepaymentlink hsc2027_ict https://your-bkash-link.com/ict\`` : `
+\`/updatepaymentlink hsc2027_ict https://your-bkash-link.com/ict\`
+\`/setcourseimage hsc2027_ict\` (reply to image)` : `
 
 🔧 **Examples:**
 \`/editprice hsc2027_ict 450\`
 \`/editlink hsc2027_ict https://t.me/+newlink\``);
 
     bot.sendMessage(msg.chat.id, adminText, {parse_mode: 'Markdown'});
+});
+
+// Set Course Image
+bot.onText(/\/setcourseimage (.+)/, (msg, match) => {
+    if (!isAdmin(msg.from.id)) return;
+    
+    const courseId = match[1].trim();
+    
+    if (!courses.has(courseId)) {
+        return bot.sendMessage(msg.chat.id, '❌ Course not found!');
+    }
+    
+    if (!msg.reply_to_message || !msg.reply_to_message.photo) {
+        return bot.sendMessage(msg.chat.id, '❌ Please reply to an image with this command!');
+    }
+    
+    const photo = msg.reply_to_message.photo;
+    const fileId = photo[photo.length - 1].file_id;
+    
+    courseImages.set(courseId, fileId);
+    bot.sendMessage(msg.chat.id, `✅ Course image set for "${courses.get(courseId).name}"`);
 });
 
 // Add Admin
@@ -412,6 +488,7 @@ bot.onText(/\/deletecourse (.+)/, (msg, match) => {
     
     const course = courses.get(courseId);
     courses.delete(courseId);
+    courseImages.delete(courseId);
     
     bot.sendMessage(msg.chat.id, `✅ Course "${course.name}" deleted successfully!`);
 });
@@ -429,7 +506,8 @@ bot.onText(/\/listcourses/, (msg) => {
         courseList += `🔹 **${course.name}**\n`;
         courseList += `   ID: \`${courseId}\`\n`;
         courseList += `   💰 Price: ${course.price} TK\n`;
-        courseList += `   🔗 Link: ${course.groupLink}\n\n`;
+        courseList += `   🔗 Link: ${course.groupLink}\n`;
+        courseList += `   🖼️ Image: ${courseImages.has(courseId) ? '✅ Set' : '❌ Not Set'}\n\n`;
     });
     
     bot.sendMessage(msg.chat.id, courseList, {parse_mode: 'Markdown'});
@@ -641,6 +719,18 @@ bot.on('callback_query', async (callbackQuery) => {
         
         let courseText = `${course.name}\n`;
         
+        if (courseImages.has(data)) {
+            try {
+                await bot.sendPhoto(msg.chat.id, courseImages.get(data), {
+                    caption: courseText,
+                    ...getCourseKeyboard(data, userId, isPending)
+                });
+                return;
+            } catch (error) {
+                console.error('Error sending course image:', error);
+            }
+        }
+        
         if (isPurchased) {
             courseText += `Status: ✅ Purchased\n`;
             courseText += `💰 Price: ${course.price} TK\n\n`;
@@ -651,9 +741,8 @@ bot.on('callback_query', async (callbackQuery) => {
             courseText += `💰 Price: ${course.price} TK\n\n`;
             courseText += `💰 Payment Instructions:\n`;
             courseText += `1. Click on "Pay Now" button\n`;
-            courseText += `2. Complete bKash payment\n`;
-            courseText += `3. Transaction ID copy করুন\n`;
-            courseText += `4. "Submit Transaction ID" button এ click করুন`;
+            courseText += `2. Complete payment\n`;
+            courseText += `3. Submit your payment proof`;
         } else {
             courseText += `Status: ❌ Not Purchased\n`;
             courseText += `💰 Price: ${course.price} TK\n\n`;
@@ -680,6 +769,22 @@ bot.on('callback_query', async (callbackQuery) => {
         const paymentText = `💳 Payment for ${course.name}
 
 💰 Amount: ${course.price} TK
+
+💡 Please select your payment method:`;
+
+        bot.editMessageText(paymentText, {
+            chat_id: msg.chat.id,
+            message_id: msg.message_id,
+            ...getPaymentMethodKeyboard(courseId)
+        });
+    }
+    else if (data.startsWith('bkash_pay_')) {
+        const courseId = data.replace('bkash_pay_', '');
+        const course = courses.get(courseId);
+        
+        const paymentText = `💳 bKash Payment for ${course.name}
+
+💰 Amount: ${course.price} TK
 📱 bKash Number: ${BKASH_NUMBER}
 
 💡 Payment Options:
@@ -689,46 +794,118 @@ bot.on('callback_query', async (callbackQuery) => {
         bot.editMessageText(paymentText, {
             chat_id: msg.chat.id,
             message_id: msg.message_id,
-            ...getCourseKeyboard(courseId, userId, true)
+            ...getBkashPaymentKeyboard(courseId)
         });
     }
-    else if (data.startsWith('pay_')) {
-        const courseId = data.replace('pay_', '');
+    else if (data.startsWith('nagad_pay_')) {
+        const courseId = data.replace('nagad_pay_', '');
         const course = courses.get(courseId);
         
-        if (!paymentLinks.has(courseId)) {
-            return bot.sendMessage(msg.chat.id, '⚠️ Payment link not configured for this course. Please send money manually to the bKash number.');
-        }
-        
-        const paymentLink = paymentLinks.get(courseId);
-        
-        const paymentText = `💳 Instant Payment for ${course.name}\n\n💰 Amount: ${course.price} TK`;
-        
-        bot.sendMessage(msg.chat.id, paymentText, {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '💳 Pay Now with bKash', url: paymentLink }],
-                    [{ text: '📝 Submit Transaction ID', callback_data: `submit_trx_${courseId}` }],
-                    [{ text: '⬅️ Back', callback_data: courseId }]
-                ]
-            }
+        const paymentText = `💳 Nagad Payment for ${course.name}
+
+💰 Amount: ${course.price} TK
+📱 Nagad Number: ${NAGAD_NUMBER}
+
+📌 Payment Instructions:
+1. Send ${course.price} TK to above Nagad number
+2. Take a screenshot of payment
+3. Click "Submit Payment Proof" button
+4. Send the screenshot and course name to admin
+
+ℹ️ Nagad এ payment করলে payment এর screenshot & course name সহ এডমিন কে মেসেজ দাও. Admin accept korbe. Bkash এ payment করলে auto approve পাবে !!`;
+
+        bot.editMessageText(paymentText, {
+            chat_id: msg.chat.id,
+            message_id: msg.message_id,
+            ...getNagadPaymentKeyboard(courseId)
         });
     }
-    else if (data.startsWith('submit_trx_')) {
-        const courseId = data.replace('submit_trx_', '');
+    else if (data === 'nagad_number') {
+        bot.answerCallbackQuery(callbackQuery.id, {
+            text: `Nagad Number: ${NAGAD_NUMBER}`,
+            show_alert: true
+        });
+    }
+    else if (data.startsWith('submit_bkash_')) {
+        const courseId = data.replace('submit_bkash_', '');
         const course = courses.get(courseId);
         
-        const trxText = `📝 Transaction ID Submit করুন\n\n💡 Instructions:\n✅ bKash থেকে যে Transaction ID পেয়েছেন সেটি type করুন\n✅ Example: 9BG4R2G5N8\n✅ শুধু ID লিখুন, অন্য কিছু না\n\n📱 ${course.name} এর জন্য payment verification\n💰 Amount: ${course.price} TK`;
+        const trxText = `📝 bKash Transaction ID Submit করুন\n\n💡 Instructions:\n✅ bKash থেকে যে Transaction ID পেয়েছেন সেটি type করুন\n✅ Example: 9BG4R2G5N8\n✅ শুধু ID লিখুন, অন্য কিছু না\n\n📱 ${course.name} এর জন্য payment verification\n💰 Amount: ${course.price} TK`;
         
         bot.sendMessage(msg.chat.id, trxText, {
             reply_markup: {
                 inline_keyboard: [[
-                    { text: '❌ Cancel', callback_data: courseId }
+                    { text: '❌ Cancel', callback_data: `bkash_pay_${courseId}` }
                 ]]
             }
         });
         
-        userData.waitingForTrx = courseId;
+        userData.waitingForTrx = { type: 'bkash', courseId };
+    }
+    else if (data.startsWith('submit_nagad_')) {
+        const courseId = data.replace('submit_nagad_', '');
+        const course = courses.get(courseId);
+        
+        const trxText = `📝 Nagad Payment Proof Submit করুন\n\n💡 Instructions:\n✅ Nagad payment এর screenshot পাঠান\n✅ Course name লিখুন\n✅ Amount: ${course.price} TK\n\nℹ️ Admin manually approve করবেন, কিছুক্ষণ পরে চেক করুন`;
+        
+        bot.sendMessage(msg.chat.id, trxText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📱 Contact Admin', url: ADMIN_TELEGRAM_LINK },
+                        { text: '✅ Payment Done', callback_data: `nagad_done_${courseId}` }
+                    ],
+                    [
+                        { text: '❌ Cancel', callback_data: `nagad_pay_${courseId}` }
+                    ]
+                ]
+            }
+        });
+        
+        userData.waitingForTrx = { type: 'nagad', courseId };
+    }
+    else if (data.startsWith('nagad_done_')) {
+        const courseId = data.replace('nagad_done_', '');
+        const course = courses.get(courseId);
+        
+        const successText = `✅ **Nagad Payment Submitted**\n\n` +
+                           `📱 ${course.name}\n` +
+                           `💰 Amount: ${course.price} TK\n\n` +
+                           `ℹ️ Admin manually verify করবেন। কিছুক্ষণ পরে চেক করুন।\n\n` +
+                           `যোগাযোগের জন্য এখানে ক্লিক করুন:`;
+        
+        bot.sendMessage(msg.chat.id, successText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📱 Contact Admin', url: ADMIN_TELEGRAM_LINK }],
+                    [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+        
+        // Notify admin
+        const adminMessage = `📌 **New Nagad Payment Request**\n\n` +
+                            `👤 User: \`${userId}\`\n` +
+                            `📚 Course: ${course.name}\n` +
+                            `💰 Amount: ${course.price} TK\n\n` +
+                            `✅ Verify payment and use /approvepayment ${userId} ${courseId}`;
+        
+        bot.sendMessage(ADMIN_ID, adminMessage, { parse_mode: 'Markdown' });
+    }
+    else if (data.startsWith('submit_payment_')) {
+        const courseId = data.replace('submit_payment_', '');
+        const course = courses.get(courseId);
+        
+        const paymentText = `💳 Payment Method Selection\n\n` +
+                           `📚 Course: ${course.name}\n` +
+                           `💰 Amount: ${course.price} TK\n\n` +
+                           `Please select your payment method:`;
+        
+        bot.editMessageText(paymentText, {
+            chat_id: msg.chat.id,
+            message_id: msg.message_id,
+            ...getPaymentMethodKeyboard(courseId)
+        });
     }
 });
 
@@ -739,8 +916,8 @@ bot.on('message', async (msg) => {
     const userId = msg.from.id;
     const userData = getUserData(userId);
     
-    if (userData.waitingForTrx) {
-        const courseId = userData.waitingForTrx;
+    if (userData.waitingForTrx && userData.waitingForTrx.type === 'bkash') {
+        const courseId = userData.waitingForTrx.courseId;
         const course = courses.get(courseId);
         const trxId = msg.text.trim();
         
@@ -765,7 +942,7 @@ bot.on('message', async (msg) => {
                 parseInt(paymentData.amount) >= course.price) {
                 
                 // Save to channel and mark as used
-                await logTransaction(trxId, userId, course.price, course.name);
+                await logTransaction(trxId, userId, course.price, course.name, 'bKash');
                 
                 userData.purchases.add(courseId);
                 userData.pendingCourse = null;
@@ -792,7 +969,7 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(msg.chat.id, `❌ Payment Verification Failed!\n\n🔍 Possible reasons:\n• Transaction ID not found\n• Payment amount insufficient\n• Payment not completed\n\n💡 Please check your Transaction ID and try again.\n\nTransaction ID entered: ${trxId}`, {
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: '🔄 Try Again', callback_data: `submit_trx_${courseId}` }],
+                            [{ text: '🔄 Try Again', callback_data: `submit_bkash_${courseId}` }],
                             [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
                         ]
                     }
@@ -811,6 +988,75 @@ bot.on('message', async (msg) => {
             });
         }
     }
+    else if (userData.waitingForTrx && userData.waitingForTrx.type === 'nagad' && msg.photo) {
+        const courseId = userData.waitingForTrx.courseId;
+        const course = courses.get(courseId);
+        
+        // Forward the photo to admin
+        const photo = msg.photo[msg.photo.length - 1];
+        const caption = `📌 Nagad Payment Proof\n\n` +
+                       `👤 User: \`${userId}\`\n` +
+                       `📚 Course: ${course.name}\n` +
+                       `💰 Amount: ${course.price} TK`;
+        
+        await bot.sendPhoto(ADMIN_ID, photo.file_id, {
+            caption: caption,
+            parse_mode: 'Markdown'
+        });
+        
+        const successText = `✅ **Nagad Payment Proof Received**\n\n` +
+                           `📱 ${course.name}\n` +
+                           `💰 Amount: ${course.price} TK\n\n` +
+                           `ℹ️ Admin manually verify করবেন। কিছুক্ষণ পরে চেক করুন।\n\n` +
+                           `যোগাযোগের জন্য এখানে ক্লিক করুন:`;
+        
+        bot.sendMessage(msg.chat.id, successText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📱 Contact Admin', url: ADMIN_TELEGRAM_LINK }],
+                    [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+        
+        userData.waitingForTrx = null;
+    }
+});
+
+// Approve Payment Command
+bot.onText(/\/approvepayment (.+) (.+)/, async (msg, match) => {
+    if (!isAdmin(msg.from.id)) return;
+    
+    const userId = match[1];
+    const courseId = match[2];
+    
+    if (!courses.has(courseId)) {
+        return bot.sendMessage(msg.chat.id, '❌ Invalid course ID!');
+    }
+    
+    const userData = getUserData(userId);
+    const course = courses.get(courseId);
+    
+    userData.purchases.add(courseId);
+    userData.pendingCourse = null;
+    
+    // Notify user
+    const successText = `✅ **Admin has approved your payment!**\n\n` +
+                       `📱 ${course.name} Unlocked!\n` +
+                       `💰 Amount: ${course.price} TK\n\n` +
+                       `🎯 Join your course group:\n👉 Click the button below`;
+    
+    bot.sendMessage(userId, successText, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: `🎯 Join ${course.name} Group`, url: course.groupLink }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            ]
+        }
+    });
+    
+    bot.sendMessage(msg.chat.id, `✅ Payment approved for user ${userId} for course ${course.name}`);
 });
 
 // Express server
