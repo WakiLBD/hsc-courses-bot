@@ -12,7 +12,7 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const BKASH_NUMBER = process.env.BKASH_NUMBER || '01902912653';
 const CHANNEL_ID = -1002855286349; // Your Telegram channel ID
 
-// ✅ Enable polling (idle হবে না)
+// ✅ Enable polling (no idle)
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 // Test Command
